@@ -99,8 +99,6 @@ async def search_products(q: str = None, category: str = None, minPrice: float =
 
     return products
 
-#testing something
-print("This is a test print statement in products.py")
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_product(request: ProductRequest, current_user: dict = Depends(get_current_user)):
     product_doc = {
