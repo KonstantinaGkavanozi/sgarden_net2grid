@@ -50,18 +50,6 @@ async def get_all_products():
     return products
 
 
-@router.get("/{product_id}")
-async def get_product_by_id(product_id: str):
-    if not ObjectId.is_valid(product_id):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-
-    product = await products_collection.find_one({"_id": ObjectId(product_id)})
-    if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-
-    return product_to_response(product)
-
-
 @router.get("/search")
 async def search_products(q: str = None, category: str = None, minPrice: float = None, maxPrice: float = None):
     """Search products by text, category, and price range.
@@ -79,9 +67,10 @@ async def search_products(q: str = None, category: str = None, minPrice: float =
         regex = {"$regex": safe_q, "$options": "i"}
         query_filter["$or"] = [{"name": regex}, {"description": regex}]
 
-    # Category exact match
+    # Category exact match (case-insensitive)
     if category:
-        query_filter["category"] = category
+        safe_cat = re.escape(category)
+        query_filter["category"] = {"$regex": f"^{safe_cat}$", "$options": "i"}
 
     # Price range
     price_query = {}
@@ -100,73 +89,16 @@ async def search_products(q: str = None, category: str = None, minPrice: float =
     return products
 
 
-@router.get("/stats")
-async def get_products_stats():
-    """Return aggregated product statistics:
+@router.get("/{product_id}")
+async def get_product_by_id(product_id: str):
+    if not ObjectId.is_valid(product_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    - totalCount: total number of products
-    - averagePrice: mean price (0.0 when no products)
-    - minPrice: lowest price (0.0 when no products)
-    - maxPrice: highest price (0.0 when no products)
-    - categoryCount: mapping of category -> number of products
-    The returned `totalCount` is guaranteed to equal the sum of `categoryCount` values.
-    """
-    # Aggregate basic numeric stats
-    pipeline_stats = [
-        {"$group": {
-            "_id": None,
-            "totalCount": {"$sum": 1},
-            "averagePrice": {"$avg": "$price"},
-            "minPrice": {"$min": "$price"},
-            "maxPrice": {"$max": "$price"},
-        }}
-    ]
+    product = await products_collection.find_one({"_id": ObjectId(product_id)})
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
-    stats_cursor = products_collection.aggregate(pipeline_stats)
-    stats_list = await stats_cursor.to_list(length=1)
-
-    if stats_list:
-        s = stats_list[0]
-        total_count = int(s.get("totalCount", 0))
-        avg = s.get("averagePrice")
-        minp = s.get("minPrice")
-        maxp = s.get("maxPrice")
-        average_price = float(avg) if avg is not None else 0.0
-        min_price = float(minp) if minp is not None else 0.0
-        max_price = float(maxp) if maxp is not None else 0.0
-    else:
-        total_count = 0
-        average_price = min_price = max_price = 0.0
-
-    # Aggregate counts per category; put missing categories under 'Uncategorized'
-    pipeline_cat = [
-        {"$group": {"_id": {"$ifNull": ["$category", "Uncategorized"]}, "count": {"$sum": 1}}}
-    ]
-
-    cat_cursor = products_collection.aggregate(pipeline_cat)
-    cats = await cat_cursor.to_list(length=None)
-
-    category_count = {}
-    cat_total = 0
-    for c in cats:
-        key = c["_id"]
-        # ensure string keys for JSON
-        key_str = str(key)
-        cnt = int(c.get("count", 0))
-        category_count[key_str] = cnt
-        cat_total += cnt
-
-    # Ensure category sums equal totalCount requirement
-    if cat_total != total_count:
-        total_count = cat_total
-
-    return {
-        "totalCount": total_count,
-        "averagePrice": average_price,
-        "minPrice": min_price,
-        "maxPrice": max_price,
-        "categoryCount": category_count,
-    }
+    return product_to_response(product)
 
 @router.post("", status_code=status.HTTP_201_CREATED)
 async def create_product(request: ProductRequest, current_user: dict = Depends(get_current_user)):
