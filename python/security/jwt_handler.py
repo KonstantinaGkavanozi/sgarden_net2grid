@@ -49,6 +49,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     payload = decode_token(credentials.credentials)
     user_id = payload.get("sub")
 
+    if not ObjectId.is_valid(user_id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
     user = await users_collection.find_one({"_id": ObjectId(user_id)})
     if user is None:
         raise HTTPException(
