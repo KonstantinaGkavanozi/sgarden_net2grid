@@ -9,6 +9,7 @@ from seed import seed_data
 from routes.auth import router as auth_router
 from routes.products import router as products_router
 from routes.users import router as users_router
+from routes.search import router as search_router
 
 # CODE QUALITY ISSUE: unused variable
 APP_NAME = "SGarden Inventory API"
@@ -48,6 +49,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(products_router)
 app.include_router(users_router)
+app.include_router(search_router)
 
 
 @app.get("/api/health")
